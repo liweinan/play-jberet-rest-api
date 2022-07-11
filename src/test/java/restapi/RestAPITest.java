@@ -14,14 +14,8 @@ import org.jberet.rest.client.BatchClient;
 import org.jberet.rest.entity.JobEntity;
 import org.jberet.rest.entity.JobExecutionEntity;
 import org.jberet.rest.entity.JobInstanceEntity;
-import org.jberet.rest.entity.MetricEntity;
 import org.jberet.rest.entity.StepExecutionEntity;
-import org.jberet.schedule.JobSchedule;
-import org.jberet.schedule.JobScheduleConfig;
-import org.jberet.schedule.JobScheduleConfigBuilder;
-import org.jberet.schedule.JobScheduler;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import javax.batch.runtime.BatchStatus;
@@ -32,7 +26,6 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.net.URI;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
@@ -163,19 +156,6 @@ public class RestAPITest {
         assertEquals(true, foundJobName1);
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    @Test
-    @Ignore
-    public void getJobInstanceCount() throws Exception {
-        batchClient.startJob(jobWithParams, null);  // to have at least 1 job instance
-        final URI uri = batchClient.getJobInstanceUriBuilder("getJobInstanceCount").build();
-        final WebTarget target = batchClient.target(uri).queryParam("jobName", jobWithParams);
-        System.out.printf("uri: %s%n", uri);
-        final Integer count = target.request().get(int.class);
-
-        assertEquals(true, count > 0);
-    }
 
     @Test
     public void getJobInstances() throws Exception {
@@ -195,16 +175,6 @@ public class RestAPITest {
         assertEquals(jobWithParams, data[0].getJobName());
     }
 
-    @Test
-    @Ignore
-    public void getJobInstanceCountBadJobName() throws Exception {
-        final URI uri = batchClient.getJobInstanceUriBuilder("getJobInstanceCount").build();
-        final WebTarget target = batchClient.target(uri).queryParam("jobName", jobNameBad);
-        System.out.printf("uri: %s%n", uri);
-        final Response response = target.request().get();
-
-        assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-    }
 
     @Test
     public void getJobInstanceCountMissingJobName() throws Exception {
@@ -241,17 +211,6 @@ public class RestAPITest {
 
         System.out.printf("Got JobExecutionData: %s%n", data);
         assertEquals(jobWithParams, data.getJobName());
-    }
-
-    @Ignore
-    @Test
-    public void getJobExecutionBadId() throws Exception {
-        final URI uri = batchClient.getJobExecutionUriBuilder(null).path(String.valueOf(Long.MAX_VALUE)).build();
-        System.out.printf("uri: %s%n", uri);
-        final WebTarget target = batchClient.target(uri);
-        final Response response = target.request().get();
-
-        assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
     }
 
     @Test
@@ -400,201 +359,4 @@ public class RestAPITest {
         }
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-    @Test
-    @Ignore
-    public void scheduleSingleAction() throws Exception {
-        final JobScheduleConfig scheduleConfig = JobScheduleConfigBuilder.newInstance()
-                .jobName(jobWithParams)
-                .initialDelay(initialDelayMinute)
-                .build();
-
-        JobSchedule jobSchedule = batchClient.schedule(scheduleConfig);
-        System.out.printf("Scheduled job schedule %s: %s%n", jobSchedule.getId(), jobSchedule);
-        Thread.sleep(sleepTimeMillis);
-
-        jobSchedule = batchClient.getJobSchedule(jobSchedule.getId());
-        assertEquals(JobSchedule.Status.DONE, jobSchedule.getStatus());
-        assertEquals(1, jobSchedule.getJobExecutionIds().size());
-        assertEquals(BatchStatus.COMPLETED,
-                batchClient.getJobExecution(jobSchedule.getJobExecutionIds().get(0)).getBatchStatus());
-    }
-
-    /**
-     * Test that schedules a single-action job execution with XML request and response media type.
-     * This test is similar to {@link #scheduleSingleAction()}, except the request & response
-     * media type.
-     *
-     * @throws Exception if errors occur
-     * @see #scheduleSingleAction()
-     */
-    @Test
-    @Ignore
-    public void scheduleSingleActionXml() throws Exception {
-        final JobScheduleConfig scheduleConfig = JobScheduleConfigBuilder.newInstance()
-                .jobName(jobWithParams)
-                .initialDelay(initialDelayMinute)
-                .build();
-
-        URI uri = batchClient.getJobUriBuilder("schedule")
-                .resolveTemplate("jobXmlName", scheduleConfig.getJobName()).build();
-        WebTarget target = batchClient.target(uri);
-        JobSchedule jobSchedule = target.request().accept(MediaType.APPLICATION_XML_TYPE)
-                .post(Entity.entity(scheduleConfig, MediaType.APPLICATION_XML_TYPE), JobSchedule.class);
-
-        System.out.printf("Scheduled job schedule %s: %s%n", jobSchedule.getId(), jobSchedule);
-        Thread.sleep(sleepTimeMillis);
-
-        uri = batchClient.getJobScheduleUriBuilder("getJobSchedule")
-                .resolveTemplate("scheduleId", jobSchedule.getId()).build();
-        target = batchClient.target(uri);
-        jobSchedule = target.request().accept(MediaType.APPLICATION_XML_TYPE).get(JobSchedule.class);
-
-        assertEquals(JobSchedule.Status.DONE, jobSchedule.getStatus());
-        assertEquals(1, jobSchedule.getJobExecutionIds().size());
-
-        uri = batchClient.getJobExecutionUriBuilder(null)
-                .path(String.valueOf(jobSchedule.getJobExecutionIds().get(0))).build();
-        target = batchClient.target(uri);
-        JobExecutionEntity jobExecutionEntity = target.request().accept(MediaType.APPLICATION_XML_TYPE)
-                .get(JobExecutionEntity.class);
-
-        assertEquals(BatchStatus.COMPLETED, jobExecutionEntity.getBatchStatus());
-    }
-
-    @Test
-    @Ignore
-    public void scheduleInterval() throws Exception {
-        final JobScheduleConfig scheduleConfig = JobScheduleConfigBuilder.newInstance()
-                .jobName(jobWithParams)
-                .initialDelay(initialDelayMinute)
-                .interval(intervalMinute)
-                .build();
-
-        JobSchedule jobSchedule = batchClient.schedule(scheduleConfig);
-        System.out.printf("Scheduled job schedule %s: %s%n", jobSchedule.getId(), jobSchedule);
-        Thread.sleep(sleepTimeMillis * 2);
-
-        jobSchedule = batchClient.getJobSchedule(jobSchedule.getId());
-        assertEquals(JobSchedule.Status.SCHEDULED, jobSchedule.getStatus());
-        assertEquals(2, jobSchedule.getJobExecutionIds().size());
-        assertEquals(BatchStatus.COMPLETED,
-                batchClient.getJobExecution(jobSchedule.getJobExecutionIds().get(0)).getBatchStatus());
-
-        final boolean cancelStatus = batchClient.cancelJobSchedule(jobSchedule.getId());
-        System.out.printf("Cancelled job schedule %s?%s%n", jobSchedule.getId(), cancelStatus);
-        assertEquals(true, cancelStatus);
-        assertEquals(JobSchedule.Status.CANCELLED, batchClient.getJobSchedule(jobSchedule.getId()).getStatus());
-
-        batchClient.deleteJobSchedule(jobSchedule.getId());
-        assertEquals(null, batchClient.getJobSchedule(jobSchedule.getId()));
-    }
-
-    @Test
-    @Ignore
-    public void scheduleFeatures() throws Exception {
-        final String[] features = batchClient.getJobScheduleFeatures();
-        final List<String> featureList = Arrays.asList(features);
-        assertEquals(false, featureList.contains(JobScheduler.PERSISTENT));
-        assertEquals(false, featureList.contains(JobScheduler.CALENDAR));
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /**
-     * Verifies submitting a job definition as JSON to start a job execution.
-     *
-     * @throws Exception
-     *
-     * @since 1.3.0.Final
-     */
-    @Ignore
-    @Test
-    public void submit() throws Exception {
-
-        final URI uri = batchClient.getJobUriBuilder("submit").build();
-        System.out.printf("uri: %s%n", uri);
-
-        final Properties jobParams = new Properties();
-        jobParams.setProperty("resource", submittedJobResource);
-
-        JobExecutionEntity jobExecutionEntity = batchClient.submitJob(jobAsJson, jobParams);
-        Thread.sleep(500);
-        jobExecutionEntity = batchClient.getJobExecution(jobExecutionEntity.getExecutionId());
-        verifySubmittedJobExecution(jobExecutionEntity);
-    }
-
-    /**
-     * This test submits a JSON job definition with incorrect configuration, expecting
-     * the job execution to fail, and restart the failed job execution.  The restarted
-     * job execution should complete successfully.
-     *
-     * @throws Exception
-
-     * @since 1.3.0.Final
-     */
-    @Test
-    @Ignore
-    public void submitFailRestart() throws Exception {
-        final URI uri = batchClient.getJobUriBuilder("submit").build();
-        System.out.printf("uri: %s%n", uri);
-
-        Properties jobParams = new Properties();
-        jobParams.setProperty("resource", submittedJobResourceInvalid);
-
-        JobExecutionEntity jobExecutionEntity = batchClient.submitJob(jobAsJson, jobParams);
-        Thread.sleep(500);
-        jobExecutionEntity = batchClient.getJobExecution(jobExecutionEntity.getExecutionId());
-        assertEquals("submitted", jobExecutionEntity.getJobName());
-        assertEquals(BatchStatus.FAILED, jobExecutionEntity.getBatchStatus());
-
-        //Optional: restart WildFly or EAP to clear out any in-memory cached jobs, and
-        //to verify the resubmitted job takes effect.
-        //If restarting happens without restarting, there is no need to pass job definition
-        //when calling resubmitJobExecution (pass null works)
-        Thread.sleep(1000 * 60);
-
-        jobParams = new Properties();
-        jobParams.setProperty("resource", submittedJobResource);
-        jobExecutionEntity = batchClient.resubmitJobExecution(jobAsJson, jobExecutionEntity.getExecutionId(), jobParams);
-        Thread.sleep(500);
-        jobExecutionEntity = batchClient.getJobExecution(jobExecutionEntity.getExecutionId());
-        verifySubmittedJobExecution(jobExecutionEntity);
-    }
-
-    private void verifySubmittedJobExecution(final JobExecutionEntity jobExecutionEntity) {
-        assertEquals(BatchStatus.COMPLETED, jobExecutionEntity.getBatchStatus());
-        assertEquals(BatchStatus.COMPLETED.toString(), jobExecutionEntity.getExitStatus());
-        assertEquals("submitted", jobExecutionEntity.getJobName());
-
-        final StepExecutionEntity[] stepExecutions = batchClient.getStepExecutions(jobExecutionEntity.getExecutionId());
-        assertEquals(1, stepExecutions.length);
-        final StepExecutionEntity stepExecutionEntity = stepExecutions[0];
-        assertEquals("submitted.step1", stepExecutionEntity.getStepName());
-
-        final MetricEntity[] metrics = stepExecutionEntity.getMetrics();
-        for (MetricEntity metricEntity : metrics) {
-            final long value = metricEntity.getValue();
-            switch (metricEntity.getType()) {
-                case READ_COUNT:
-                case WRITE_COUNT:
-                    assertEquals(6, value);
-                    break;
-                case COMMIT_COUNT:
-                    assertEquals(1, value);
-                    break;
-                case FILTER_COUNT:
-                case PROCESS_SKIP_COUNT:
-                case ROLLBACK_COUNT:
-                case READ_SKIP_COUNT:
-                case WRITE_SKIP_COUNT:
-                    assertEquals(0, value);
-                    break;
-                default:
-                    throw new IllegalStateException("Unexpected metrics type: " + metricEntity.getType());
-            }
-        }
-    }
 }
